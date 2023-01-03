@@ -52,7 +52,8 @@ def connect(conn, data, addr):
         pass_length = data[tmp_length] * 10 + data[tmp_length + 1]
         for i in range(pass_length):
             pass_name = pass_name + chr(data[tmp_length + 2 + i])
-    client = Client(conn, addr, client_id, user_name, pass_name, bit_flag[3] + bit_flag[4], None, None, None, bit_flag[6])
+    client = Client(conn, addr, client_id, user_name, pass_name, bit_flag[3] + bit_flag[4], None, None, None,
+                    bit_flag[6], keep_alive)
     conn.send(CONNACK)
     return client
 
@@ -104,3 +105,7 @@ def unsubscribe(conn, data):
     UNSUBACK += b'\x00'
     print(UNSUBACK)
     conn.send(UNSUBACK)
+
+
+def pingreq(conn):
+    conn.send(b'\xd0\x00')
