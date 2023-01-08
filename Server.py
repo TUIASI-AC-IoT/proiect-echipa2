@@ -1,4 +1,5 @@
 import socket
+import struct
 import threading
 import Packets
 from Topic import Topic
@@ -14,7 +15,9 @@ SUBSCRIBE = 130
 UNSUBSCRIBE = 162
 PINGREQ = 192
 DISCONNECT = 224
-
+PUBREL = 98
+PUBREC = 80
+PUBCOMP = 112
 
 
 class Server:
@@ -38,7 +41,10 @@ class Server:
                 print("Eroare la pornirea thread‐ului")
 
     def packets_handle(self, conn, addr, index):
+        identifier = 0
         client = 0
+        copy_of_data = 0
+        clQoS2 = []
         while 1:
             try:
                 data = conn.recv(1024)
@@ -79,26 +85,49 @@ class Server:
                 client.retrigger()
 
             if data[0] == PUBLISH_QoS1:
-                print(self.clients)
                 clients_receive = Packets.publishQoS1(conn, self.clients, data)
                 for cl in clients_receive:
-                    Client.setQoS(cl, 1)
+                    Client.setQoS1(cl, 1)
                     self.sendQoS1(cl, data)
                 client.retrigger()
 
             if data[0] == PUBACK:
-                Client.setQoS(client, 0)
+                Client.setQoS1(client, 0)
                 client.retrigger()
 
             if data[0] == DISCONNECT:
                 self.clients.remove(client)
+
+            if data[0] == PUBLISH_QoS2:
+                identifier, clientsQoS2 = Packets.publishQoS2(conn, self.clients, data)
+                copy_of_data = data
+                clQoS2 = clientsQoS2
+                client.retrigger()
+
+            if data[0] == PUBREL:
+                idf = Packets.hex_to_dec(data[2], data[3])
+                if identifier == idf:
+                    for cli in clQoS2:
+                        Client.setQoS2(cli, 1)
+                        self.sendQoS2(cli, copy_of_data)
+                    Packets.pubComp(conn, data)
+                client.retrigger()
+
+            if data[0] == PUBREC:
+                print('sa mori tu')
+                Client.setQoS2(client, 2)
+                client.retrigger()
+
+            if data[0] == PUBCOMP:
+                Client.setQoS2(client, 0)
+                client.retrigger()
 
             print(addr, ' a trimis: ', data)
         conn.close()
 
     def sendQoS1(self, cl, data):
         timer = threading.Timer(5, self.sendQoS1, args=(cl, data))
-        if Client.getQos(cl):
+        if Client.getQos1(cl):
             try:
                 Client.getConn(cl).send(data)
             except:
@@ -107,3 +136,25 @@ class Server:
         else:
             timer.cancel()
 
+    def sendQoS2(self, cl, data):
+        timer = threading.Timer(5, self.sendQoS2, args=(cl, data))
+        timer1 = threading.Timer(5, self.sendQoS2, args=(cl, data))
+        if Client.getQoS2(cl) == 1:
+            try:
+                Client.getConn(cl).send(data)
+            except:
+                pass
+            timer.start()
+        elif Client.getQoS2(cl) == 2:
+            timer.cancel()
+            pubrel =b'\x62\x03'
+            pubrel += struct.pack('B', data[4 + Packets.hex_to_dec(data[2], data[3])])
+            pubrel += struct.pack('B', data[5 + Packets.hex_to_dec(data[2], data[3])])
+            pubrel += b'\x00'
+            try:
+                Client.getConn(cl).send(pubrel)
+            except:
+                pass
+            timer1.start()
+        else:
+            timer1.cancel()

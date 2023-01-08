@@ -2,6 +2,7 @@ from Topic import *
 import threading
 import Packets
 
+
 class Client:
     def __init__(self, conn, addr, client_id, user, password, qos, expiry, will_delay, willtop, willmsg, clean_fl, keep_alive):
         self.topics = []
@@ -17,9 +18,10 @@ class Client:
         self.willmsg = willmsg
         self.clean = clean_fl
         self.keep_alive = keep_alive+3
-        self.timer = threading.Timer(self.keep_alive, self.resuscitare)
+        self.timer = threading.Timer(5, self.resuscitare)
         self.timer.start()
         self.recvQoS1 = 0
+        self.recvQos2 = 0
 
     def afisare(self):
         print(self.conn)
@@ -74,9 +76,15 @@ class Client:
     def getClientID(self):
         return self.client_id
 
-    def setQoS(self, value):
+    def setQoS1(self, value):
         self.recvQoS1 = value
 
-    def getQos(self):
+    def getQos1(self):
         return self.recvQoS1
+
+    def setQoS2(self, value):
+        self.recvQos2 = value
+
+    def getQoS2(self):
+        return self.recvQos2
 

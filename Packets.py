@@ -6,6 +6,7 @@ import struct
 UNSUPPORTED_PROTOCOL = bytes('\x20\x02\x00\x84', encoding='utf-8')
 CONNACK = bytes('\x20\x09\x00\x00\x06\x22\x00\x0a\x21\x00\x0a', encoding='utf-8')
 
+ID = 1
 
 def hex_to_dec(third_byte, fourth_byte, first_byte=0, second_byte=0):
     no1 = (first_byte // 16) * (16 ** 7)
@@ -169,15 +170,11 @@ def publishQoS1(conn, clients, data):
     topic_length = hex_to_dec(data[2], data[3])
     for i in range(topic_length):
         topic_name = topic_name + chr(data[4 + i])
-    print(topic_length)
-    print(topic_name)
     message = ''
     message_length = data[1] - 5 - topic_length
-    print(message_length)
     for i in range(message_length):
         message = message + chr(data[7 + topic_length + i])
-    print(message)
-    identifier = hex_to_dec(data[4+topic_length], data[5+topic_length])
+    #identifier = hex_to_dec(data[4+topic_length], data[5+topic_length])
 
     PUBACK = b'\x40\x02'
     PUBACK += struct.pack('B', data[4 + topic_length])
@@ -191,6 +188,7 @@ def publishQoS1(conn, clients, data):
 
 
 def lastWill(clients, topic_name, message, qos):
+    global ID
     data = 0
     print(qos)
     if qos == '00':
@@ -204,6 +202,113 @@ def lastWill(clients, topic_name, message, qos):
             data += struct.pack('B', ord(x))
         print(data)
 
+        for client in clients:
+            if Client.checkTopic(client, topic_name):
+                Client.getConn(client).send(data)
+
+    if qos == '01':
+        data = b'\x32'
+        data += struct.pack('B', 5 + len(topic_name) + len(message))
+        data += struct.pack('>H', len(topic_name))
+        for x in topic_name:
+            data += struct.pack('B', ord(x))
+        data += struct.pack('>H', ID)
+        ID = ID+1
+        data += struct.pack('B', 0)
+        for x in message:
+            data += struct.pack('B', ord(x))
+        for client in clients:
+            if Client.checkTopic(client, topic_name):
+                Client.setQoS1(client, 1)
+                lastWillQoS1(client, data)
+
+    if qos == '10':
+        data = b'\x34'
+        data += struct.pack('B', 5 + len(topic_name) + len(message))
+        data += struct.pack('>H', len(topic_name))
+        for x in topic_name:
+            data += struct.pack('B', ord(x))
+        data += struct.pack('>H', ID)
+        ID = ID + 1
+        data += struct.pack('B', 0)
+        for x in message:
+            data += struct.pack('B', ord(x))
+        for client in clients:
+            if Client.checkTopic(client, topic_name):
+                Client.setQoS2(client, 1)
+                lastWillQoS2(client, data)
+
+def lastWillQoS1(client, data):
+    timer = threading.Timer(5, lastWillQoS1, args=(client, data))
+    if Client.getQos1(client):
+        try:
+            Client.getConn(client).send(data)
+        except:
+            pass
+        timer.start()
+    else:
+        timer.cancel()
+
+
+def lastWillQoS2(client, data):
+    timer = threading.Timer(5, lastWillQoS2, args=(client, data))
+    timer1 = threading.Timer(5, lastWillQoS2, args=(client, data))
+    if Client.getQoS2(client) == 1:
+        try:
+            Client.getConn(client).send(data)
+        except:
+            pass
+        timer.start()
+    elif Client.getQoS2(client) == 2:
+        timer.cancel()
+        print(data)
+        pubrel = b'\x62\x03'
+        pubrel += struct.pack('B', data[4 + hex_to_dec(data[2], data[3])])
+        pubrel += struct.pack('B', data[5 + hex_to_dec(data[2], data[3])])
+        print(data[11])
+        print(data[12])
+        pubrel += b'\x00'
+        print(pubrel)
+        try:
+            Client.getConn(client).send(pubrel)
+        except:
+            pass
+        timer1.start()
+    else:
+        timer1.cancel()
+
+
+def publishQoS2(conn, clients, data):
+    clients_receive = []
+    topic_name = ''
+    topic_length = hex_to_dec(data[2], data[3])
+    for i in range(topic_length):
+        topic_name = topic_name + chr(data[4 + i])
+    print(topic_length)
+    print(topic_name)
+    message = ''
+    message_length = data[1] - 5 - topic_length
+    print(message_length)
+    for i in range(message_length):
+        message = message + chr(data[7 + topic_length + i])
+    print(message)
+    identifier = hex_to_dec(data[4 + topic_length], data[5 + topic_length])
+
+    PUBREC = b'\x50\x02'
+    PUBREC += struct.pack('B', data[4 + topic_length])
+    PUBREC += struct.pack('B', data[5 + topic_length])
+    conn.send(PUBREC)
+
     for client in clients:
         if Client.checkTopic(client, topic_name):
-            Client.getConn(client).send(data)
+            clients_receive.append(client)
+
+    return identifier, clients_receive
+
+
+def pubComp(conn, data):
+    PUBCOMP = b'\x70\x02'
+    PUBCOMP += struct.pack('B', data[2])
+    PUBCOMP += struct.pack('B', data[3])
+
+    conn.send(PUBCOMP)
