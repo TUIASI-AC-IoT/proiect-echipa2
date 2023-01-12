@@ -52,6 +52,8 @@ class Server:
                 for client in self.clients:
                     if conn == Client.getConn(client):
                         Packets.lastWill(self.clients, client.getTopic(), client.getMessage(), client.getQoS())
+                        Packets.expiry(client)
+                        self.clients.remove(client)
                 break
             if not data:
                 break
@@ -63,15 +65,18 @@ class Server:
                 if ret != 23:
                     self.clients.append(ret)
                     ret.afisare()
+                else:
+                    print("username, password, lastwill invalid sau eroare la conectare")
+                    conn.send(b'\x20\x09\x00\x80\x06\x22\x00\x0a\x21\x00\x0a')
             if data[0] == SUBSCRIBE:
-                topic_name = Packets.subscribe(conn, data)
+                topic_name = Packets.subscribe(conn, data, self.clients)
                 topic = Topic(topic_name.rstrip("/#"))
                 client.sub(topic)
                 client.retrigger()
                 client.printTopics()
 
             if data[0] == UNSUBSCRIBE:
-                topic_name = Packets.unsubscribe(conn, data)
+                topic_name = Packets.unsubscribe(conn, data, self.clients)
                 client.unsub(topic_name.rstrip("/#"))
                 client.retrigger()
                 client.printTopics()
@@ -96,6 +101,7 @@ class Server:
                 client.retrigger()
 
             if data[0] == DISCONNECT:
+                Packets.expiry(client)
                 self.clients.remove(client)
 
             if data[0] == PUBLISH_QoS2:
@@ -114,7 +120,6 @@ class Server:
                 client.retrigger()
 
             if data[0] == PUBREC:
-                print('sa mori tu')
                 Client.setQoS2(client, 2)
                 client.retrigger()
 

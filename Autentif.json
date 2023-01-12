@@ -1,0 +1,22 @@
+[
+ {
+    "client_id": "mqttx_c8b338bf",
+    "user_name" : "diana",
+    "password" : "diana123"
+  },
+  {
+    "client_id": "mqttx_de57b2d3",
+    "user_name": "amadeus",
+    "password" : "mozart"
+  },
+  {
+    "client_id": "mqttx_6d4794b8",
+    "user_name": "sebi",
+    "password" : "sebi123"
+  },
+  {
+    "client_id": "mqttx_dee95f96",
+    "user_name": "lampa",
+    "password" : "pat"
+  }
+]

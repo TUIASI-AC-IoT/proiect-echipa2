@@ -2,6 +2,7 @@ import threading
 
 from Client import Client
 import struct
+import json
 
 UNSUPPORTED_PROTOCOL = bytes('\x20\x02\x00\x84', encoding='utf-8')
 CONNACK = bytes('\x20\x09\x00\x00\x06\x22\x00\x0a\x21\x00\x0a', encoding='utf-8')
@@ -27,6 +28,7 @@ def connect(conn, data, addr):
     will_topic = ''
     will_msg = ''
     will_delay = 0
+    clean_start_value = None
 
     protocol_length = hex_to_dec(data[2], data[3])
     protocol_name = ''
@@ -49,22 +51,28 @@ def connect(conn, data, addr):
     bit_flag = x[::-1]
     keep_alive = hex_to_dec(data[10], data[11])
 
+    if bit_flag[6] == '0':
+        clean_start_value = hex_to_dec(data[16], data[17], data[14], data[15])
+
+
     client_length = hex_to_dec(data[18], data[19])
     for i in range(client_length):
         client_id = client_id + chr(data[20 + i])
 
-    if bit_flag[0] == '1' and bit_flag[5] == '0':
-        user_length = hex_to_dec(data[20 + client_length], data[20 + client_length + 1])
-        for i in range(user_length):
-            user_name = user_name + chr(data[20 + client_length + 2 + i])
+    #if bit_flag[0] == '1' and bit_flag[5] == '0':
+    #    user_length = hex_to_dec(data[20 + client_length], data[20 + client_length + 1])
+    #    for i in range(user_length):
+    #        user_name = user_name + chr(data[20 + client_length + 2 + i])
 
-        tmp_length = 20 + client_length + 2 + user_length
-        pass_length = hex_to_dec(data[tmp_length], data[tmp_length + 1])
-        for i in range(pass_length):
-            pass_name = pass_name + chr(data[tmp_length + 2 + i])
+    #    tmp_length = 20 + client_length + 2 + user_length
+    #    pass_length = hex_to_dec(data[tmp_length], data[tmp_length + 1])
+    #    for i in range(pass_length):
+    #        pass_name = pass_name + chr(data[tmp_length + 2 + i])
 
     if bit_flag[0] == '1' and bit_flag[5] == '1':
+        print('aici')
         if data[20 + client_length] == 11:
+            print('aici2')
             will_delay = hex_to_dec(data[24 + client_length], data[25+client_length], data[22 + client_length], data[23 + client_length])
 
             will_topic_length = hex_to_dec(data[32 + client_length], data[33 + client_length])
@@ -85,23 +93,70 @@ def connect(conn, data, addr):
             pass_length = hex_to_dec(data[tmp_length], data[tmp_length + 1])
             for i in range(pass_length):
                 pass_name = pass_name + chr(data[tmp_length + 2 + i])
+    else:
+        return 23
 
-    client = Client(conn, addr, client_id, user_name, pass_name, bit_flag[3] + bit_flag[4], None,
+    if verifUserPass(user_name, pass_name) == 0:
+        return 23
+
+    client = Client(conn, addr, client_id, user_name, pass_name, bit_flag[3] + bit_flag[4], clean_start_value,
                     will_delay, will_topic, will_msg, bit_flag[6], keep_alive)
+
+    #if bit_flag[6] == '0':
+        #restoreTopics(client)
+    if bit_flag[6] == '1':
+        expiry_done(client_id)
     conn.send(CONNACK)
     return client
 
+def verifUserPass(user_name, password):
+    with open('Autentif.json') as f:
+        data = json.load(f)
+    for p_id in data:
+        p_name = p_id.get('user_name')
+        p_pass = p_id.get('password')
+        if p_name == user_name and p_pass == password:
+            return 1
+    return 0
 
-def subscribe(conn, data):
+
+def restoreTopics(client):
+    with open('Session.json') as f:
+        data = json.load(f)
+    for p_id in data:
+        p_client_id = p_id.get('client_id')
+        if p_client_id == client.getClientID():
+            topics = p_id.get('topics')
+            for topic in topics:
+                client.appendTopics(topic)
+
+
+def subscribe(conn, data,clients):
     topic_name = ''
     topic_length = hex_to_dec(data[5], data[6])
     for i in range(topic_length):
         topic_name = topic_name + chr(data[7 + i])
     #print(topic_name)
 
+    client_id=''
+    for client in clients:
+        if client.getConn() == conn:
+            client_id = client.getClientID()
+    with open('Session.json') as f:
+        fisier = json.load(f)
+
+    for f in fisier:
+        cl_id = f.get('client_id')
+        if cl_id == client_id:
+            f.get('topics').append(topic_name.strip('/#'))
+            print(f)
+
+    with open("Session.json", "w") as f:
+        json.dump(fisier, f, indent=4)
+
     sub_opt = data[7 + topic_length]
     bit_sub_opt = bin(sub_opt).replace('0b', '')
-    x = bit_sub_opt[::-1]  # this reverses an array.
+    x = bit_sub_opt[::-1]
     while len(x) < 8:
         x += '0'
     bit_sub_opt = x[::-1]
@@ -125,12 +180,29 @@ def subscribe(conn, data):
     return topic_name
 
 
-def unsubscribe(conn, data):
+def unsubscribe(conn, data, clients):
     topic_name = ''
     topic_length = hex_to_dec(data[5], data[6])
     for i in range(topic_length):
         topic_name = topic_name + chr(data[7 + i])
-    #print(topic_name)
+
+
+    client_id = ''
+    for client in clients:
+        if client.getConn() == conn:
+            client_id = client.getClientID()
+
+    with open('Session.json') as f:
+        fisier = json.load(f)
+
+    for f in fisier:
+        cl_id = f.get('client_id')
+        if cl_id == client_id:
+            f.get('topics').remove(topic_name.strip('/#'))
+            print(f)
+
+    with open("Session.json", "w") as f:
+        json.dump(fisier, f, indent=4)
 
     UNSUBACK = b'\xb0\x04'
     UNSUBACK += struct.pack('B', data[2])
@@ -312,3 +384,26 @@ def pubComp(conn, data):
     PUBCOMP += struct.pack('B', data[3])
 
     conn.send(PUBCOMP)
+
+
+def expiry(client):
+    expiry_time = client.getExpiry()
+    if expiry_time is not None and expiry_time < 4294967295:
+        client_id = client.getClientID()
+        timer = threading.Timer(expiry_time, expiry_done, args=[str(client_id)])
+        timer.start()
+
+def expiry_done(client_id):
+    with open('Session.json') as f:
+        fisier = json.load(f)
+
+    for f in fisier:
+        cl_id = f.get('client_id')
+        if cl_id == client_id:
+            f.get('topics').clear()
+
+    with open("Session.json", "w") as f:
+        json.dump(fisier, f, indent=4)
+
+
+

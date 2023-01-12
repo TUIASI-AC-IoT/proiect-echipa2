@@ -18,7 +18,7 @@ class Client:
         self.willmsg = willmsg
         self.clean = clean_fl
         self.keep_alive = keep_alive+3
-        self.timer = threading.Timer(5, self.resuscitare)
+        self.timer = threading.Timer(self.keep_alive, self.resuscitare)
         self.timer.start()
         self.recvQoS1 = 0
         self.recvQos2 = 0
@@ -88,3 +88,8 @@ class Client:
     def getQoS2(self):
         return self.recvQos2
 
+    def appendTopics(self, topic):
+        self.topics.append(topic)
+
+    def getExpiry(self):
+        return self.expiry
